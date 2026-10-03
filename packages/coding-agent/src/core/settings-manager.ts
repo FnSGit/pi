@@ -144,6 +144,7 @@ export interface Settings {
 	branchSummary?: BranchSummarySettings;
 	retry?: RetrySettings;
 	hideThinkingBlock?: boolean;
+	hideFooterPwd?: boolean; // default: false - hide the footer's pwd (cwd + git branch) line; use when an extension already renders that row
 	showCacheMissNotices?: boolean; // default: false - show cache cost and provider recovery notices
 	externalEditor?: string; // Command for Ctrl+G external editor; takes precedence over VISUAL/EDITOR
 	shellPath?: string; // Custom shell path (e.g., for Cygwin users on Windows); supports leading ~ expansion
@@ -1047,6 +1048,10 @@ export class SettingsManager {
 		return this.settings.hideThinkingBlock ?? false;
 	}
 
+	getHideFooterPwd(): boolean {
+		return this.settings.hideFooterPwd ?? false;
+	}
+
 	getShowCacheMissNotices(): boolean {
 		return this.settings.showCacheMissNotices ?? false;
 	}
@@ -1066,6 +1071,12 @@ export class SettingsManager {
 	setHideThinkingBlock(hide: boolean): void {
 		this.globalSettings.hideThinkingBlock = hide;
 		this.markModified("hideThinkingBlock");
+		this.save();
+	}
+
+	setHideFooterPwd(hide: boolean): void {
+		this.globalSettings.hideFooterPwd = hide;
+		this.markModified("hideFooterPwd");
 		this.save();
 	}
 

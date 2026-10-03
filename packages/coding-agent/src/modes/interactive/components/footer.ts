@@ -61,6 +61,7 @@ interface SessionStats {
  */
 export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
+	private hidePwd = false;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
 	private sessionStats?: SessionStats;
@@ -76,6 +77,11 @@ export class FooterComponent implements Component {
 
 	setAutoCompactEnabled(enabled: boolean): void {
 		this.autoCompactEnabled = enabled;
+	}
+
+	/** Hide the pwd line. For extensions that already render cwd/branch via setStatus. */
+	setHidePwd(hide: boolean): void {
+		this.hidePwd = hide;
 	}
 
 	/**
@@ -284,7 +290,11 @@ export class FooterComponent implements Component {
 		const dimRemainder = theme.fg("dim", remainder);
 
 		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
-		const lines = [pwdLine, dimStatsLeft + dimRemainder];
+		const lines: string[] = [];
+		if (!this.hidePwd) {
+			lines.push(pwdLine);
+		}
+		lines.push(dimStatsLeft + dimRemainder);
 
 		// Add extension statuses, each on its own line, sorted by key alphabetically.
 		// One line per status so a long status (e.g. git-status path + branch) does not

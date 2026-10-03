@@ -632,6 +632,7 @@ export class InteractiveMode {
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
+		this.footer.setHidePwd(this.settingsManager.getHideFooterPwd());
 		this.footerContainer = new Container();
 		this.footerContainer.addChild(this.footer);
 

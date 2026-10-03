@@ -184,6 +184,32 @@ describe("FooterComponent width handling", () => {
 		}
 	});
 
+	it("omits the pwd line when hideFooterPwd is set", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(
+			session,
+			createFooterData(
+				1,
+				new Map([
+					["git-status", "/tmp"],
+					["teams-progress", "\u2839impl-t7 Sonnet:max 2m48s 61.8k"],
+				]),
+			),
+		);
+		footer.setHidePwd(true);
+
+		const width = 120;
+		const lines = footer.render(width);
+
+		// Stats line moves to index 0; extension statuses follow, pwd line is gone.
+		expect(lines).toHaveLength(3);
+		expect(stripAnsi(lines[0])).toContain("12.3%/200k");
+		expect(lines[1]).toBe("/tmp");
+		expect(lines[2]).toBe("\u2839impl-t7 Sonnet:max 2m48s 61.8k");
+		for (const line of lines) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+		}
+	});
 	it("shows the physical model a virtual model routed to", () => {
 		const session = createSession({
 			sessionName: "",

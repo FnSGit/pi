@@ -9,6 +9,7 @@
 ### Fixed
 
 - The footer now renders each extension status on its own line instead of joining every status with a space, so a wide status (for example a git worktree path plus branch) no longer crowds out a shorter one (for example teammate progress).
+- Added the `hideFooterPwd` setting to hide the footer's pwd line (cwd and git branch). Use it when an extension already renders that row, for example a real-time git status line via `ctx.ui.setStatus()`. See [Settings](docs/settings.md).
 
 ## [1.0.0] - 2026-10-01
 
