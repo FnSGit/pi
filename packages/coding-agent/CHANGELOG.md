@@ -488,6 +488,10 @@
 
 - Removed `npm-shrinkwrap.json` from the published package. npm installations no longer pin transitive dependencies, and library consumers can now override them. Use the pi.dev installer for pinned installations ([#5653](https://github.com/earendil-works/pi/issues/5653))
 
+### Fixed
+
+- The footer now renders each extension status on its own line instead of joining every status with a space, so a wide status (for example a git worktree path plus branch) no longer crowds out a shorter one (for example teammate progress).
+
 ## [1.0.0] - 2026-10-01
 
 ### New Features
