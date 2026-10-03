@@ -286,15 +286,18 @@ export class FooterComponent implements Component {
 		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
 		const lines = [pwdLine, dimStatsLeft + dimRemainder];
 
-		// Add extension statuses on a single line, sorted by key alphabetically
+		// Add extension statuses, each on its own line, sorted by key alphabetically.
+		// One line per status so a long status (e.g. git-status path + branch) does not
+		// crowd out a shorter one (e.g. teams-progress process info) on a shared line.
 		const extensionStatuses = this.footerData.getExtensionStatuses();
 		if (extensionStatuses.size > 0) {
 			const sortedStatuses = Array.from(extensionStatuses.entries())
 				.sort(([a], [b]) => a.localeCompare(b))
 				.map(([, text]) => sanitizeStatusText(text));
-			const statusLine = sortedStatuses.join(" ");
-			// Truncate to terminal width with dim ellipsis for consistency with footer style
-			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", "...")));
+			for (const statusText of sortedStatuses) {
+				if (!statusText) continue;
+				lines.push(truncateToWidth(statusText, width, theme.fg("dim", "...")));
+			}
 		}
 
 		return lines;

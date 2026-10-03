@@ -92,10 +92,13 @@ function createSession(options: {
 	return session as unknown as AgentSession;
 }
 
-function createFooterData(providerCount: number): ReadonlyFooterDataProvider {
+function createFooterData(
+	providerCount: number,
+	extensionStatuses: ReadonlyMap<string, string> = new Map<string, string>(),
+): ReadonlyFooterDataProvider {
 	const provider = {
 		getGitBranch: () => "main",
-		getExtensionStatuses: () => new Map<string, string>(),
+		getExtensionStatuses: () => extensionStatuses,
 		getAvailableProviderCount: () => providerCount,
 		onBranchChange: (callback: () => void) => {
 			void callback;
@@ -152,6 +155,30 @@ describe("FooterComponent width handling", () => {
 		const footer = new FooterComponent(session, createFooterData(2));
 
 		const lines = footer.render(width);
+		for (const line of lines) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+		}
+	});
+
+	it("puts each extension status on its own line", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(
+			session,
+			createFooterData(
+				1,
+				new Map([
+					["git-status", "/tmp"],
+					["teams-progress", "\u2839impl-t7 Sonnet:max 2m48s 61.8k"],
+				]),
+			),
+		);
+
+		const width = 120;
+		const lines = footer.render(width);
+
+		expect(lines).toHaveLength(4);
+		expect(lines[2]).toBe("/tmp");
+		expect(lines[3]).toBe("\u2839impl-t7 Sonnet:max 2m48s 61.8k");
 		for (const line of lines) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
