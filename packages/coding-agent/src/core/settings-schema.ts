@@ -248,6 +248,13 @@ export const SettingsSchema = Type.Object(
 		branchSummary: Type.Optional(BranchSummarySettingsSchema),
 		retry: Type.Optional(RetrySettingsSchema),
 		hideThinkingBlock: Type.Optional(Type.Boolean({ default: SETTINGS_DEFAULTS.hideThinkingBlock })),
+		hideFooterPwd: Type.Optional(
+			Type.Boolean({
+				description:
+					"Hide the footer's pwd (cwd + git branch) line; use when an extension already renders that row.",
+				default: SETTINGS_DEFAULTS.hideFooterPwd,
+			}),
+		),
 		showCacheMissNotices: Type.Optional(
 			Type.Boolean({
 				description: "Show cache cost and provider recovery notices.",

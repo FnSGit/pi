@@ -967,6 +967,10 @@ export class SettingsManager {
 		return this.settings.hideThinkingBlock ?? SETTINGS_DEFAULTS.hideThinkingBlock;
 	}
 
+	getHideFooterPwd(): boolean {
+		return this.settings.hideFooterPwd ?? SETTINGS_DEFAULTS.hideFooterPwd;
+	}
+
 	getShowCacheMissNotices(): boolean {
 		return this.settings.showCacheMissNotices ?? SETTINGS_DEFAULTS.showCacheMissNotices;
 	}
@@ -986,6 +990,12 @@ export class SettingsManager {
 	setHideThinkingBlock(hide: boolean): void {
 		this.globalSettings.hideThinkingBlock = hide;
 		this.markModified("hideThinkingBlock");
+		this.save();
+	}
+
+	setHideFooterPwd(hide: boolean): void {
+		this.globalSettings.hideFooterPwd = hide;
+		this.markModified("hideFooterPwd");
 		this.save();
 	}
 
