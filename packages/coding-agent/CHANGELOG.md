@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- The footer now shows the current session id on its own line, so a session can be located for troubleshooting without running `/session`.
+
 ### Changed
 
 - `/arminsayshi` now plays a 3D version in fullscreen mode, with one cube per pixel of Armin. The 3D pi logo easter egg on header logo click is replaced by it.
