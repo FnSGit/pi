@@ -162,7 +162,7 @@ export class FooterComponent implements Component {
 
 	render(width: number): string[] {
 		const state = this.session.state;
-		const { usageTotals, latestCacheHitRate, contextUsage } = this.getSessionStats();
+		const { usageTotals, latestCacheHitRate, contextUsage, sessionId } = this.getSessionStats();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
@@ -290,10 +290,16 @@ export class FooterComponent implements Component {
 		const dimRemainder = theme.fg("dim", remainder);
 
 		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
+		// Session id on its own line so troubleshooting (locating the jsonl / correlating
+		// logs) doesn't require typing /session. Always shown, independent of hidePwd:
+		// hideFooterPwd means an extension already renders the cwd row, which has no
+		// bearing on the session id.
+		const idLine = truncateToWidth(theme.fg("dim", `ID: ${sessionId}`), width, theme.fg("dim", "..."));
 		const lines: string[] = [];
 		if (!this.hidePwd) {
 			lines.push(pwdLine);
 		}
+		lines.push(idLine);
 		lines.push(dimStatsLeft + dimRemainder);
 
 		// Add extension statuses, each on its own line, sorted by key alphabetically.

@@ -176,9 +176,9 @@ describe("FooterComponent width handling", () => {
 		const width = 120;
 		const lines = footer.render(width);
 
-		expect(lines).toHaveLength(4);
-		expect(lines[2]).toBe("/tmp");
-		expect(lines[3]).toBe("\u2839impl-t7 Sonnet:max 2m48s 61.8k");
+		expect(lines).toHaveLength(5);
+		expect(lines[3]).toBe("/tmp");
+		expect(lines[4]).toBe("\u2839impl-t7 Sonnet:max 2m48s 61.8k");
 		for (const line of lines) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
@@ -201,15 +201,45 @@ describe("FooterComponent width handling", () => {
 		const width = 120;
 		const lines = footer.render(width);
 
-		// Stats line moves to index 0; extension statuses follow, pwd line is gone.
-		expect(lines).toHaveLength(3);
-		expect(stripAnsi(lines[0])).toContain("12.3%/200k");
-		expect(lines[1]).toBe("/tmp");
-		expect(lines[2]).toBe("\u2839impl-t7 Sonnet:max 2m48s 61.8k");
+		// Session id line stays, pwd line is gone; stats line follows, then extension statuses.
+		expect(lines).toHaveLength(4);
+		expect(stripAnsi(lines[0])).toBe("ID: test-session");
+		expect(stripAnsi(lines[1])).toContain("12.3%/200k");
+		expect(lines[2]).toBe("/tmp");
+		expect(lines[3]).toBe("\u2839impl-t7 Sonnet:max 2m48s 61.8k");
 		for (const line of lines) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
 	});
+	it("shows the session id on its own line", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const lines = footer.render(120);
+
+		// pwd, session id, stats
+		expect(lines).toHaveLength(3);
+		expect(stripAnsi(lines[1])).toBe("ID: test-session");
+		for (const line of lines) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(120);
+		}
+	});
+
+	it("keeps the session id line when hideFooterPwd is set", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(session, createFooterData(1));
+		footer.setHidePwd(true);
+
+		const lines = footer.render(120);
+
+		// session id, stats
+		expect(lines).toHaveLength(2);
+		expect(stripAnsi(lines[0])).toBe("ID: test-session");
+		for (const line of lines) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(120);
+		}
+	});
+
 	it("shows the physical model a virtual model routed to", () => {
 		const session = createSession({
 			sessionName: "",
@@ -220,7 +250,7 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const statsLine = stripAnsi(footer.render(120)[2]);
 
 		expect(statsLine).toContain("auto \u2022 high \u2192 gpt-5.6-luna \u2022 medium");
 	});
@@ -259,7 +289,7 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const statsLine = stripAnsi(footer.render(120)[2]);
 		expect(statsLine).toContain("$1.250");
 	});
 
@@ -267,10 +297,10 @@ describe("FooterComponent width handling", () => {
 		const usage = { input: 10, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.5 } };
 		const session = createSession({ sessionName: "", usage });
 		const footer = new FooterComponent(session, createFooterData(1));
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.500");
+		expect(stripAnsi(footer.render(120)[2])).toContain("$0.500");
 
 		session.sessionManager.getEntries().push({ type: "message", message: { role: "assistant", usage } } as never);
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.000");
+		expect(stripAnsi(footer.render(120)[2])).toContain("$1.000");
 	});
 
 	it("shows the latest cache hit rate when cache usage is present", () => {
@@ -286,7 +316,7 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const statsLine = stripAnsi(footer.render(120)[2]);
 		expect(statsLine).toContain("CH25.0%");
 	});
 
@@ -304,14 +334,14 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.234 (sub)");
+		expect(stripAnsi(footer.render(120)[2])).toContain("$1.234 (sub)");
 	});
 
 	it("marks explicitly identified subscription auth", () => {
 		const session = createSession({ sessionName: "", provider: "anthropic", usingSubscription: true });
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.000 (sub)");
+		expect(stripAnsi(footer.render(120)[2])).toContain("$0.000 (sub)");
 	});
 
 	it("does not mark generic OAuth sign-in as a subscription", () => {
@@ -327,7 +357,7 @@ describe("FooterComponent width handling", () => {
 			},
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
-		const stats = stripAnsi(footer.render(120)[1]);
+		const stats = stripAnsi(footer.render(120)[2]);
 
 		expect(stats).toContain("$1.234");
 		expect(stats).not.toContain("(sub)");

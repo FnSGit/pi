@@ -23,7 +23,7 @@ Each session records the working directory it was created in and never changes i
 
 If a session's working directory no longer exists, interactive mode offers to run the session in the current directory instead. Pi does not store that choice, so it asks again the next time you open the session. Other modes exit with an error.
 
-Use `/name` or `--name` to assign a recognizable session name. Run `/session` to verify the current session file, ID, message count, token usage, and cost.
+Use `/name` or `--name` to assign a recognizable session name. The footer shows the current session ID on its own line, and `/session` reports the current session file, ID, message count, token usage, and cost.
 
 The session picker lets you search, rename, and delete sessions. It can also show paths, change sorting, and limit results to named sessions. See [Keybindings](keybindings.md#sessions) for its shortcuts.
 
