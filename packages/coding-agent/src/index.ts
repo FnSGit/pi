@@ -64,8 +64,10 @@ export type {
 	AppKeybinding,
 	AutocompleteProviderFactory,
 	BashToolCallEvent,
+	BeforeAgentStartCustomEvent,
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
+	BeforeAgentStartUserEvent,
 	BeforeProviderHeadersEvent,
 	BeforeProviderRequestEvent,
 	BeforeProviderRequestEventResult,
@@ -179,6 +181,8 @@ export type {
 	ToolLoadout,
 	ToolLoadoutChanges,
 	ToolNamespace,
+	ToolRendererResolver,
+	ToolRenderers,
 	ToolRenderResultOptions,
 	ToolResultEvent,
 	ToolResultEventResult,
@@ -386,6 +390,7 @@ export {
 	type WriteToolOptions,
 	withFileMutationQueue,
 } from "./core/tools/index.ts";
+export { formatReadLineRange } from "./core/tools/render-utils.ts";
 export {
 	hasTrustRequiringProjectResources,
 	type ProjectTrustDecision,
