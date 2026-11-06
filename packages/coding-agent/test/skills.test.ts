@@ -2,7 +2,16 @@ import { homedir } from "os";
 import { join, resolve } from "path";
 import { describe, expect, it } from "vitest";
 import type { ResourceDiagnostic } from "../src/core/diagnostics.ts";
-import { formatSkillsForPrompt, loadSkills, loadSkillsFromDir, type Skill } from "../src/core/skills.ts";
+import {
+	expandSkillCommandText,
+	formatSkillsForPrompt,
+	loadSkills,
+	loadSkillsFromDir,
+	parseSkillUri,
+	previewSkillDescription,
+	resolveSkillUriPath,
+	type Skill,
+} from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 
 const fixturesDir = resolve(__dirname, "fixtures/skills");
@@ -262,7 +271,7 @@ describe("skills", () => {
 			const introText = result.substring(0, xmlStart);
 
 			expect(introText).toContain("The following skills provide specialized instructions");
-			expect(introText).toContain("Use the read tool to load a skill's file");
+			expect(introText).toContain("load that skill's file with the read tool");
 		});
 
 		it("should escape XML special characters", () => {
@@ -342,6 +351,45 @@ describe("skills", () => {
 
 			const result = formatSkillsForPrompt(skills);
 			expect(result).toBe("");
+		});
+
+		it("should render a truncated description preview", () => {
+			const description = "x ".repeat(400);
+			const skills: Skill[] = [
+				createTestSkill({
+					name: "verbose-skill",
+					description,
+					filePath: "/path/verbose/SKILL.md",
+					baseDir: "/path/verbose",
+				}),
+			];
+
+			const preview = previewSkillDescription(description);
+			expect(preview.endsWith("\u2026")).toBe(true);
+			expect(formatSkillsForPrompt(skills)).toContain(`<description>${preview}</description>`);
+		});
+
+		it("should mention skill:// URIs only for the read variant", () => {
+			const skills: Skill[] = [
+				createTestSkill({
+					name: "test-skill",
+					description: "A test skill.",
+					filePath: "/path/to/skill/SKILL.md",
+					baseDir: "/path/to/skill",
+				}),
+			];
+
+			const read = formatSkillsForPrompt(skills);
+			expect(read).toContain("skill://<name>");
+			expect(read).toContain("skill://pdf-tools");
+
+			const bash = formatSkillsForPrompt(skills, "bash");
+			expect(bash).toContain("Use bash to load a skill's file");
+			expect(bash).not.toContain("skill://");
+
+			const indirect = formatSkillsForPrompt(skills, "indirect");
+			expect(indirect).toContain("Load a skill's file when the task matches its description.");
+			expect(indirect).not.toContain("skill://");
 		});
 	});
 
@@ -428,5 +476,245 @@ describe("skills", () => {
 			expect(collisionWarnings).toHaveLength(1);
 			expect(collisionWarnings[0].message).toContain("name collision");
 		});
+
+		it("should keep a same-name collision under a <label>/<name> alias", () => {
+			const { skills, diagnostics } = loadSkills({
+				agentDir: resolve(__dirname, "fixtures/empty-agent"),
+				cwd: resolve(__dirname, "fixtures/empty-cwd"),
+				skillPaths: [join(collisionFixturesDir, "first"), join(collisionFixturesDir, "second")],
+				includeDefaults: false,
+			});
+
+			const names = skills.map((s) => s.name);
+			expect(names).toContain("calendar");
+			expect(names).toContain("temporary/calendar");
+			expect(skills.find((s) => s.name === "calendar")?.description).toBe("First calendar skill.");
+			expect(skills.find((s) => s.name === "temporary/calendar")?.description).toBe("Second calendar skill.");
+			expect(diagnostics.some((d) => d.message.includes('also loaded as "temporary/calendar"'))).toBe(true);
+		});
+	});
+});
+
+describe("previewSkillDescription", () => {
+	it("collapses whitespace and returns short descriptions unchanged", () => {
+		expect(previewSkillDescription("A test skill.")).toBe("A test skill.");
+		expect(previewSkillDescription("a   b\n\nc")).toBe("a b c");
+	});
+
+	it("cuts at the longest sentence boundary", () => {
+		const description = `${"A".repeat(45)}. ${"b ".repeat(200)}`;
+		expect(previewSkillDescription(description)).toBe(`${"A".repeat(45)}.\u2026`);
+	});
+
+	it("cuts at the last word boundary when no sentence boundary qualifies", () => {
+		const result = previewSkillDescription("word ".repeat(100));
+		expect(result).toHaveLength(300);
+		expect(result.endsWith("word\u2026")).toBe(true);
+	});
+
+	it("hard-cuts CJK text without spaces or sentence punctuation", () => {
+		expect(previewSkillDescription("\u6280".repeat(400))).toBe(`${"\u6280".repeat(300)}\u2026`);
+	});
+});
+
+describe("parseSkillUri", () => {
+	it("parses a name-only URI", () => {
+		expect(parseSkillUri("skill://pdf-tools")).toEqual({ name: "pdf-tools", relativePath: undefined });
+	});
+
+	it("parses a name and relative path", () => {
+		expect(parseSkillUri("skill://pdf-tools/scripts/extract.sh")).toEqual({
+			name: "pdf-tools",
+			relativePath: "scripts/extract.sh",
+		});
+	});
+
+	it("decodes percent-encoded parts", () => {
+		expect(parseSkillUri("skill://foo/bar%2Fbaz")).toEqual({ name: "foo", relativePath: "bar/baz" });
+		const ref = parseSkillUri("skill://caf%C3%A9");
+		expect(ref?.name).toBe("caf\u00e9");
+		expect(ref?.relativePath).toBeUndefined();
+	});
+
+	it("rejects an absolute relative path", () => {
+		expect(parseSkillUri("skill://foo//etc/passwd")).toBeNull();
+		expect(parseSkillUri("skill://foo/C:/Windows")).toBeNull();
+	});
+
+	it("rejects a relative path that escapes with ..", () => {
+		expect(parseSkillUri("skill://foo/../secret")).toBeNull();
+	});
+
+	it("rejects a backslash path traversal", () => {
+		expect(parseSkillUri("skill://demo/..\\..\\etc\\passwd")).toBeNull();
+	});
+
+	it("rejects an empty name", () => {
+		expect(parseSkillUri("skill://")).toBeNull();
+	});
+
+	it("rejects a malformed percent-escape", () => {
+		expect(parseSkillUri("skill://foo/%ZZ")).toBeNull();
+	});
+
+	it("rejects a non-skill prefix", () => {
+		expect(parseSkillUri("read://foo")).toBeNull();
+		expect(parseSkillUri("https://example.com")).toBeNull();
+	});
+});
+
+describe("resolveSkillUriPath", () => {
+	const skills = [
+		createTestSkill({
+			name: "demo",
+			description: "Demo.",
+			filePath: "/skills/demo/SKILL.md",
+			baseDir: "/skills/demo",
+		}),
+	];
+
+	it("resolves a name to the SKILL.md path", () => {
+		expect(resolveSkillUriPath("skill://demo", skills)).toBe("/skills/demo/SKILL.md");
+	});
+
+	it("resolves a name and relative path inside the skill directory", () => {
+		expect(resolveSkillUriPath("skill://demo/scripts/run.sh", skills)).toBe("/skills/demo/scripts/run.sh");
+	});
+
+	it("rejects a path that escapes the skill directory", () => {
+		expect(resolveSkillUriPath("skill://demo/../escape", skills)).toBeNull();
+	});
+
+	it("returns null for an unknown skill", () => {
+		expect(resolveSkillUriPath("skill://nope", skills)).toBeNull();
+	});
+});
+
+describe("expandSkillCommandText", () => {
+	const valid: Skill = {
+		name: "valid-skill",
+		description: "A valid skill for testing purposes.",
+		filePath: join(fixturesDir, "valid-skill", "SKILL.md"),
+		baseDir: join(fixturesDir, "valid-skill"),
+		sourceInfo: createSyntheticSourceInfo(join(fixturesDir, "valid-skill", "SKILL.md"), { source: "test" }),
+		disableModelInvocation: false,
+	};
+	const second: Skill = {
+		name: "child-skill",
+		description: "A nested skill in a subdirectory.",
+		filePath: join(fixturesDir, "nested", "child-skill", "SKILL.md"),
+		baseDir: join(fixturesDir, "nested", "child-skill"),
+		sourceInfo: createSyntheticSourceInfo(join(fixturesDir, "nested", "child-skill", "SKILL.md"), { source: "test" }),
+		disableModelInvocation: false,
+	};
+
+	it("expands a leading known skill and appends args", () => {
+		const result = expandSkillCommandText("/skill:valid-skill do the thing", [valid]);
+		expect(result.loadedSkills).toEqual(["valid-skill"]);
+		expect(result.text).toContain(`<skill name="valid-skill" location="${valid.filePath}">`);
+		expect(result.text).toContain("References are relative to");
+		expect(result.text.endsWith("do the thing")).toBe(true);
+		expect(result.unknownSkills).toEqual([]);
+		expect(result.readErrors).toEqual([]);
+	});
+
+	it("returns an error block for a leading unknown skill", () => {
+		const result = expandSkillCommandText("/skill:nope", [valid]);
+		expect(result.unknownSkills).toEqual(["nope"]);
+		expect(result.text).toBe(
+			`<error>Unknown skill "nope". Available skills: valid-skill. Run /reload after adding a skill.</error>`,
+		);
+		expect(result.loadedSkills).toEqual([]);
+	});
+
+	it("expands an embedded token and turns the surrounding prose into args", () => {
+		const result = expandSkillCommandText("please use /skill:valid-skill to extract", [valid]);
+		expect(result.loadedSkills).toEqual(["valid-skill"]);
+		expect(result.text).toContain(`<skill name="valid-skill"`);
+		expect(result.text).not.toContain("/skill:valid-skill");
+		expect(result.text).toContain("please use");
+		expect(result.text).toContain("to extract");
+		expect(result.text.indexOf("</skill>")).toBeLessThan(result.text.indexOf("to extract"));
+	});
+
+	it("expands multiple embedded tokens", () => {
+		const result = expandSkillCommandText("use /skill:valid-skill then /skill:child-skill now", [valid, second]);
+		expect(result.loadedSkills).toEqual(["valid-skill", "child-skill"]);
+		expect(result.text).toContain(`<skill name="valid-skill"`);
+		expect(result.text).toContain(`<skill name="child-skill"`);
+		expect(result.text).toContain("use");
+		expect(result.text).toContain("now");
+	});
+
+	it("leaves an unknown embedded token verbatim", () => {
+		const result = expandSkillCommandText("use /skill:nope please", [valid]);
+		expect(result.text).toBe("use /skill:nope please");
+		expect(result.loadedSkills).toEqual([]);
+		expect(result.unknownSkills).toEqual([]);
+	});
+
+	it("leaves a leading non-skill slash command untouched", () => {
+		const result = expandSkillCommandText("/reload now", [valid]);
+		expect(result.text).toBe("/reload now");
+		expect(result.loadedSkills).toEqual([]);
+	});
+
+	it("records a read error and leaves the text unchanged", () => {
+		const ghost: Skill = {
+			name: "ghost",
+			description: "Ghost.",
+			filePath: "/non/existent/ghost/SKILL.md",
+			baseDir: "/non/existent/ghost",
+			sourceInfo: createSyntheticSourceInfo("/non/existent/ghost/SKILL.md", { source: "test" }),
+			disableModelInvocation: false,
+		};
+		const result = expandSkillCommandText("/skill:ghost", [ghost]);
+		expect(result.text).toBe("/skill:ghost");
+		expect(result.loadedSkills).toEqual([]);
+		expect(result.readErrors).toHaveLength(1);
+		expect(result.readErrors[0].name).toBe("ghost");
+	});
+
+	it("returns the text unchanged when there are no skill tokens", () => {
+		expect(expandSkillCommandText("just a normal message", [valid])).toEqual({
+			text: "just a normal message",
+			loadedSkills: [],
+			unknownSkills: [],
+			readErrors: [],
+		});
+	});
+
+	it("does not expand a token embedded in a URL", () => {
+		const text = "see https://example.com/skill:valid-skill now";
+		const result = expandSkillCommandText(text, [valid]);
+		expect(result.text).toBe(text);
+		expect(result.loadedSkills).toEqual([]);
+	});
+
+	it("does not expand a token embedded in a path", () => {
+		const text = "check path/skill:valid-skill here";
+		const result = expandSkillCommandText(text, [valid]);
+		expect(result.text).toBe(text);
+		expect(result.loadedSkills).toEqual([]);
+	});
+
+	it("does not expand a token glued to trailing punctuation", () => {
+		const text = "do(/skill:valid-skill)now";
+		const result = expandSkillCommandText(text, [valid]);
+		expect(result.text).toBe(text);
+		expect(result.loadedSkills).toEqual([]);
+	});
+
+	it("collapses whitespace around a single expanded token", () => {
+		const result = expandSkillCommandText("please use /skill:valid-skill to extract", [valid]);
+		expect(result.loadedSkills).toEqual(["valid-skill"]);
+		expect(result.text.endsWith("please use to extract")).toBe(true);
+		expect(result.text).not.toContain("please use  ");
+	});
+
+	it("collapses multiple spaces around an expanded token", () => {
+		const result = expandSkillCommandText("x  /skill:valid-skill  y", [valid]);
+		expect(result.loadedSkills).toEqual(["valid-skill"]);
+		expect(result.text.endsWith("x y")).toBe(true);
 	});
 });

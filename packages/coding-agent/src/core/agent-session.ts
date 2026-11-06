@@ -13,7 +13,6 @@
  * Modes use this class and add their own I/O layer on top.
  */
 
-import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import {
 	type AfterToolCallContext,
@@ -58,7 +57,6 @@ import {
 	streamSimple,
 } from "@earendil-works/pi-ai/compat";
 import { getThemeByName, theme } from "../modes/interactive/theme/theme.ts";
-import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { processImage } from "../utils/image-process.ts";
 import { sleep } from "../utils/sleep.ts";
 import { normalizeToolResultImages } from "../utils/tool-result-images.ts";
@@ -138,6 +136,7 @@ import {
 	DEFAULT_TOOL_NAMES,
 	type SettingsManager,
 } from "./settings-manager.ts";
+import { expandSkillCommandText, resolveSkillUriPath } from "./skills.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo, isSyntheticPath, type SourceInfo } from "./source-info.ts";
 import {
@@ -2267,34 +2266,28 @@ export class AgentSession {
 	}
 
 	/**
-	 * Expand skill commands (/skill:name args) to their full content.
-	 * Returns the expanded text, or the original text if not a skill command or skill not found.
-	 * Emits errors via extension runner if file read fails.
+	 * Expand /skill: commands in user input into <skill> instruction blocks.
+	 * A leading /skill:name expands to that skill's block (an unknown name becomes an <error> block);
+	 * embedded /skill:name tokens expand in place with the surrounding prose as arguments. Read failures
+	 * and unknown leading names are surfaced through the extension runner.
 	 */
 	private _expandSkillCommand(text: string): string {
-		if (!text.startsWith("/skill:")) return text;
-
-		const spaceIndex = text.indexOf(" ");
-		const skillName = spaceIndex === -1 ? text.slice(7) : text.slice(7, spaceIndex);
-		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1).trim();
-
-		const skill = this.resourceLoader.getSkills().skills.find((s) => s.name === skillName);
-		if (!skill) return text; // Unknown skill, pass through
-
-		try {
-			const content = readFileSync(skill.filePath, "utf-8");
-			const body = stripFrontmatter(content).trim();
-			const skillBlock = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
-			return args ? `${skillBlock}\n\n${args}` : skillBlock;
-		} catch (err) {
-			// Emit error like extension commands do
+		const expansion = expandSkillCommandText(text, this.resourceLoader.getSkills().skills);
+		for (const { message } of expansion.readErrors) {
 			this._extensionRunner.emitError({
-				extensionPath: skill.filePath,
+				extensionPath: "skill_expansion",
 				event: "skill_expansion",
-				error: err instanceof Error ? err.message : String(err),
+				error: message,
 			});
-			return text; // Return original on error
 		}
+		for (const name of expansion.unknownSkills) {
+			this._extensionRunner.emitError({
+				extensionPath: "skill_expansion",
+				event: "skill_expansion",
+				error: `Unknown skill "${name}"`,
+			});
+		}
+		return expansion.text;
 	}
 
 	private async _queueUserInput(
@@ -3749,7 +3742,10 @@ export class AgentSession {
 					]),
 				)
 			: createAllToolDefinitions(this._cwd, {
-					read: { autoResizeImages },
+					read: {
+						autoResizeImages,
+						resolveSkillUri: (uri) => resolveSkillUriPath(uri, this.resourceLoader.getSkills().skills),
+					},
 					bash: { commandPrefix: shellCommandPrefix, shellPath },
 				});
 

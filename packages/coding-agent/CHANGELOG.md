@@ -1,7 +1,3 @@
-# Changelog
-
-## [Unreleased]
-
 ### Breaking Changes
 
 - Removed `readFile` from `GrepOperations`. The grep tool now takes context lines from ripgrep and no longer reads matched files itself. To search a remote system, override grep's `execute()`; see [Remote Execution](docs/extensions.md#remote-execution) ([#9276](https://github.com/earendil-works/pi/issues/9276))
@@ -13,6 +9,8 @@
 - `pi.registerMarkdownTransformer()` takes an optional `{ messageTypes }` that selects the Markdown surfaces a transformer runs on. Besides user, assistant, and thinking Markdown, transformers can now opt into `custom` (custom messages and skill blocks), `summary` (branch and compaction summaries), and `changelog` (What's New, `/changelog`, the Extension Updates notice, and the Update Available note). Without options a transformer runs on user, assistant, and thinking Markdown as before. The built-in Mermaid renderer now also draws diagrams in expanded branch and compaction summaries
 - `pi auth login <provider>` logs in to a provider from the shell without starting a session, for example `pi auth login radius`. It signs in with an account in the browser and exits; `--api-key` saves an API key instead, and `--no-browser` uses device code or copy-code sign-in instead. Logging in to Radius also configures the Radius MCP server. `pi auth logout <provider>` removes the stored credentials, like `/logout`
 - `ctx.ui.custom()` overlays now honor the `blocked` option: pi reports blocked program status (OSC 7501) from when the overlay is shown until it calls `done()`, also while it is hidden with `setHidden()`. Closing one overlay keeps other open questions blocked ([#11816](https://github.com/earendil-works/pi/issues/11816))
+- `skill://<name>` URIs in the read tool: `skill://pdf-tools` reads a skill's `SKILL.md` and `skill://pdf-tools/references/formats.md` reads a file bundled with the skill, so the model no longer needs the absolute path.
+- Embedded `/skill:<name>` tokens: a skill command anywhere in a message expands in place, with the surrounding text becoming the arguments.
 
 ### Changed
 
@@ -20,6 +18,10 @@
 - Default models moved to newer models at the same or a lower price: `amazon-bedrock` Claude Opus 5.5, `azure` GPT-6.1 Sol, `google` and `google-vertex` Gemini 4 Argon, `vercel-ai-gateway` GLM 5.3, `baseten` GLM 5.3, `minimax` and `minimax-cn` MiniMax-M3, `qwen-token-plan` and `qwen-token-plan-cn` Qwen3.8 Max, `opencode-go` Kimi K3.1 Pro, and Kimi K2.7 Code instead of Kimi K2.6 for `moonshotai`, `moonshotai-cn`, `huggingface`, `opencode`, `openrouter`, `cloudflare-workers-ai` and `cloudflare-ai-gateway`
 - Consecutive cache warms now show as one `Cache warmed: $<total>` line with the cumulative cost instead of one line per warm
 - The OpenAI Codex provider is shown as "OpenAI Codex" again instead of "OpenAI Codex (legacy)" in `/login` and the model selector
+- The system prompt now tells the model to load a skill's file with the read tool via its `skill://<name>` URI before acting, and not to claim to follow a skill whose file it has not loaded.
+- Skill descriptions in the system prompt are truncated to a bounded preview that cuts at a sentence or word boundary.
+- Same-name skill collisions keep the later skill under a `<label>/<name>` alias (for example `project/foo`) instead of dropping it, so no skill silently disappears.
+- An unknown `/skill:<name>` now returns an error listing the available skills instead of passing the text through verbatim.
 
 ### Fixed
 
