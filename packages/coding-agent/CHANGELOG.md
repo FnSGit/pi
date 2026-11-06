@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- `skill://<name>` URIs in the read tool: `skill://pdf-tools` reads a skill's `SKILL.md` and `skill://pdf-tools/references/formats.md` reads a file bundled with the skill, so the model no longer needs the absolute path.
+- Embedded `/skill:<name>` tokens: a skill command anywhere in a message expands in place, with the surrounding text becoming the arguments.
+
+### Changed
+
+- The system prompt now tells the model to load a skill's file with the read tool via its `skill://<name>` URI before acting, and not to claim to follow a skill whose file it has not loaded.
+- Skill descriptions in the system prompt are truncated to a bounded preview that cuts at a sentence or word boundary.
+- Same-name skill collisions keep the later skill under a `<label>/<name>` alias (for example `project/foo`) instead of dropping it, so no skill silently disappears.
+- An unknown `/skill:<name>` now returns an error listing the available skills instead of passing the text through verbatim.
+
 ## [1.4.0] - 2026-10-21
 
 ### New Features
