@@ -17,6 +17,8 @@
 - The footer now shows the current session id on its own line, so a session can be located for troubleshooting without running `/session`
 - The footer renders each extension status on its own line, so a long status such as a git-status path and branch does not push the token stats off the row
 - The `hideFooterPwd` setting drops the footer's pwd (cwd and git branch) line, for extensions that already render that row via `ctx.ui.setStatus()`
+- `skill://<name>` URIs in the read tool: `skill://pdf-tools` reads a skill's `SKILL.md` and `skill://pdf-tools/references/formats.md` reads a file bundled with the skill, so the model no longer needs the absolute path.
+- Embedded `/skill:<name>` tokens: a skill command anywhere in a message expands in place, with the surrounding text becoming the arguments.
 
 ### Changed
 
@@ -24,6 +26,10 @@
 - Default models moved to newer models at the same or a lower price: `amazon-bedrock` Claude Opus 5.5, `azure` GPT-6.1 Sol, `google` and `google-vertex` Gemini 4 Argon, `vercel-ai-gateway` GLM 5.3, `baseten` GLM 5.3, `minimax` and `minimax-cn` MiniMax-M3, `qwen-token-plan` and `qwen-token-plan-cn` Qwen3.8 Max, `opencode-go` Kimi K3.1 Pro, and Kimi K2.7 Code instead of Kimi K2.6 for `moonshotai`, `moonshotai-cn`, `huggingface`, `opencode`, `openrouter`, `cloudflare-workers-ai` and `cloudflare-ai-gateway`
 - Consecutive cache warms now show as one `Cache warmed: $<total>` line with the cumulative cost instead of one line per warm
 - The OpenAI Codex provider is shown as "OpenAI Codex" again instead of "OpenAI Codex (legacy)" in `/login` and the model selector
+- The system prompt now tells the model to load a skill's file with the read tool via its `skill://<name>` URI before acting, and not to claim to follow a skill whose file it has not loaded.
+- Skill descriptions in the system prompt are truncated to a bounded preview that cuts at a sentence or word boundary.
+- Same-name skill collisions keep the later skill under a `<label>/<name>` alias (for example `project/foo`) instead of dropping it, so no skill silently disappears.
+- An unknown `/skill:<name>` now returns an error listing the available skills instead of passing the text through verbatim.
 
 ### Fixed
 

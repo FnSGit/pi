@@ -198,7 +198,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<name>test-skill</name>");
 			expect(prompt).toContain("Use bash to load a skill's file");
 			expect(prompt).toContain(
-				"Resolve relative paths against the skill's directory (parent of SKILL.md). Use absolute paths in tool calls.",
+				"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
 			);
 		});
 
@@ -240,7 +240,8 @@ describe("buildSystemPrompt", () => {
 		test("keeps skills without naming a hidden reader", () => {
 			expect(build(["read", "bash"])).toContain("\nLoad a skill's file when the task matches its description.");
 			expect(build(["read"])).toContain("Use bash to load a skill's file");
-			expect(build([])).toContain("Use the read tool to load a skill's file");
+			expect(build([])).toContain("load that skill's file with the read tool");
+			expect(build([])).toContain("skill://<name>");
 		});
 	});
 });

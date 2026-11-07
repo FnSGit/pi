@@ -42,13 +42,17 @@ Use relative paths from the skill directory when referring to bundled files. Pi 
 
 At startup, Pi scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
-When a task matches, the model reads `SKILL.md` and follows its instructions. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use `/skill:name` when you need to force it.
+When a task matches, the model reads `SKILL.md` and follows its instructions. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use `/skill:name` when you need to force it. The prompt shows a bounded preview of each description, not the full text.
+
+The read tool accepts a `skill://<name>` URI in place of an absolute path. `skill://pdf-tools` reads the skill's `SKILL.md`; `skill://pdf-tools/references/formats.md` reads a file bundled with the skill. The absolute path in the prompt works too.
 
 Arguments after `/skill:name` are appended to the loaded instructions as a user request:
 
 ```text
 /skill:pdf-tools extract report.pdf
 ```
+
+A `/skill:name` token also works anywhere in a message, not only at the start. Pi replaces each known token with the skill's instructions and treats the surrounding text as the arguments. An unknown `/skill:name` returns an error listing the available skills instead of sending the text through as-is.
 
 Set `disable-model-invocation: true` in frontmatter when a skill should be available only through its explicit command. The `enableSkillCommands` [setting](settings.md) controls whether skill commands appear in interactive command discovery; manually entered `/skill:name` commands still work.
 
@@ -82,7 +86,7 @@ Names use lowercase letters, numbers, and hyphens, with no leading, trailing, or
 
 Pi neither requires nor warns when the declared name differs from the parent directory. Other Agent Skills implementations may enforce that requirement, so matching names remain the portable choice.
 
-Malformed `SKILL.md` files and declared skills without descriptions are not loaded. Name collisions keep the first discovered skill and produce a warning.
+Malformed `SKILL.md` files and declared skills without descriptions are not loaded. When two skills share a name, the first keeps the bare name and the later one loads under a `<label>/<name>` alias (the label is the source scope, such as `project`), so no skill silently disappears; a warning records the alias.
 
 ## Validate and share a skill
 
