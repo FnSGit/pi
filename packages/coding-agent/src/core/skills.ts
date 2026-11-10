@@ -418,7 +418,7 @@ export function formatSkillsForPrompt(skills: Skill[], fileReadTool: "read" | "b
 	}
 
 	lines.push(
-		"Resolve relative paths against the skill's directory (parent of SKILL.md). Use absolute paths in tool calls.",
+		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
 		"",
 		"<available_skills>",
 	);

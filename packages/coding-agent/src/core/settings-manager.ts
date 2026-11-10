@@ -968,7 +968,7 @@ export class SettingsManager {
 	}
 
 	getHideFooterPwd(): boolean {
-		return this.settings.hideFooterPwd ?? false;
+		return this.settings.hideFooterPwd ?? SETTINGS_DEFAULTS.hideFooterPwd;
 	}
 
 	getShowCacheMissNotices(): boolean {
