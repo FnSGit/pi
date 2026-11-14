@@ -28,6 +28,7 @@ import {
 	PluginError,
 	type Ref,
 	type Self,
+	type SessionLock,
 	sameLocation,
 	signalOf,
 	unsafe,
@@ -38,10 +39,10 @@ import {
 import { Hosts, Server, type WorkerState } from "@p2/app/v1/server";
 import type { EnvConfig } from "../envs/config.ts";
 import { EnvManagers, EnvService } from "../envs/contract.ts";
-import { Catalog, type Session } from "../sessions/contract.ts";
+import { Catalog, type Session, SessionLocks } from "../sessions/contract.ts";
 import { type Child, ChildStore } from "../subagents/contract.ts";
 import { type OwnerConfig, OwnerConfigFile, type OwnerConfigState, type OwnerServer } from "./config.ts";
-import { type Instance, InstanceSchema, Mcp, McpManager, type ProjectFile } from "./contract.ts";
+import { type Instance, InstanceSchema, MCP_ACCEPTS, Mcp, McpManager, type ProjectFile } from "./contract.ts";
 import { McpCredentials } from "./credentials.ts";
 import type { ConnectEnv } from "./environments.ts";
 import { type ClientInfo, Instances, RECONNECT } from "./instances.ts";
@@ -82,7 +83,7 @@ export default mcpServerFacet(VIEW_LINGER_MS, sshEnvironments);
 export function mcpServerFacet(viewLingerMs: number, connector: EnvConnector): Facet {
 	return defineFacet((host) => {
 		host.serve(McpManager, managerFactory(connector));
-		host.serve(Mcp, view, { linger: viewLingerMs });
+		host.serve(Mcp, view, { linger: viewLingerMs, accepts: MCP_ACCEPTS });
 		contribute(host, "p2.mcp-routes", signInRoutes);
 	});
 }
@@ -132,6 +133,7 @@ function managerFactory(connector: EnvConnector): Factory<typeof McpManager> {
 		const work = deriveTyped(self, [catalog.sessions, store.children], ([sessions, children]) =>
 			workEnvironments(sessions, children),
 		);
+		const locks = self.get(SessionLocks, {});
 		const leased = self.state(Leased);
 		const memento = self.state(Memento);
 		const placed = placements();
@@ -163,7 +165,7 @@ function managerFactory(connector: EnvConnector): Factory<typeof McpManager> {
 				// What the leases use now starts at once (after a restart with the tools listed before), so the supervisor's
 				// first list already shows it; derives compute only after the natives opened, so placed from the sources.
 				const at = workEnvironments(catalog.sessions.value, store.children.value);
-				opened.reconcile(placed(file.value.state, leased.value.leases, envs.configs.value, at));
+				opened.reconcile(placed(file.value.state, leased.value.leases, envs.configs.value, at, locks.locks.value));
 				return opened;
 			},
 			(opened) => opened.close(),
@@ -189,30 +191,34 @@ function managerFactory(connector: EnvConnector): Factory<typeof McpManager> {
 			() => ({ instances: instances.value.list(), signIns: signIns.value.list() }),
 		);
 		keepMemento(self, memento, configured, listed);
-		const placement = () => placed(configured.value, leased.value.leases, envs.configs.value, work.value);
+		const placement = () =>
+			placed(configured.value, leased.value.leases, envs.configs.value, work.value, locks.locks.value);
 		// The current configuration, leases, environments and places of work, then every change of them, start and close
 		// instances; methods that change leases reconcile at once too, so a call right after `setLocations` finds its
 		// instance.
 		const inputs = deriveTyped(
 			self,
-			[configured, leased, envs.configs, work],
-			([config, { leases }, configs, at]) => ({
+			[configured, leased, envs.configs, work, locks.locks],
+			([config, { leases }, configs, at, locked]) => ({
 				config,
 				leases,
 				envs: configs,
 				work: at,
+				locks: locked,
 			}),
 		);
 		self.on(inputs, async ({ value }) =>
-			instances.value.reconcile(placed(value.config, value.leases, value.envs, value.work)),
+			instances.value.reconcile(placed(value.config, value.leases, value.envs, value.work, value.locks)),
 		);
 		const leases = deriveTyped(self, [inputs], ([value]) =>
-			placed(value.config, value.leases, value.envs, value.work).leases.map(({ lease, servers, errors }) => ({
-				session: lease.session,
-				location: lease.location,
-				instances: [...new Set(servers.values())],
-				errors: [...errors],
-			})),
+			placed(value.config, value.leases, value.envs, value.work, value.locks).leases.map(
+				({ lease, servers, errors }) => ({
+					session: lease.session,
+					location: lease.location,
+					instances: [...new Set(servers.values())],
+					errors: [...errors],
+				}),
+			),
 		);
 		return {
 			instances: deriveTyped(self, [listed], ([value]) => value.instances),
@@ -233,7 +239,7 @@ function managerFactory(connector: EnvConnector): Factory<typeof McpManager> {
 
 /**
  * Keeps the memento a restarted manager's natives start from: the servers of each valid read, and the instances once
- * one of them lists other tools (instances closing change no tools, so a manager ending writes nothing).
+ * one of them lists other tools or instructions (instances closing change neither, so a manager ending writes nothing).
  */
 function keepMemento(
 	self: Self,
@@ -245,14 +251,15 @@ function keepMemento(
 		if (failure === null) await memento.change((draft) => Object.assign(draft, { servers, errors }), ctx);
 	});
 	self.on(listed, async ({ value: { instances } }, ctx) => {
-		const remembered = new Map(memento.value.instances.map((instance) => [instance.id, toolNames(instance)]));
-		if (instances.some((instance) => remembered.get(instance.id) !== toolNames(instance)))
+		const remembered = new Map(memento.value.instances.map((instance) => [instance.id, listing(instance)]));
+		if (instances.some((instance) => remembered.get(instance.id) !== listing(instance)))
 			await memento.change((draft) => Object.assign(draft, { instances }), ctx);
 	});
 }
 
-/** The names of the tools `instance` lists, as one string. */
-const toolNames = (instance: Instance): string => instance.tools.map((tool) => tool.name).join("\n");
+/** The names of the tools `instance` lists and its instructions, as one string. */
+const listing = (instance: Instance): string =>
+	JSON.stringify([instance.tools.map((tool) => tool.name), instance.instructions ?? null]);
 
 /** The environments each session's conversations work on, as the catalog and the subagent store record them. */
 function workEnvironments(
@@ -278,14 +285,15 @@ function placements(): (
 	leases: readonly Lease[],
 	envs: Readonly<Record<string, EnvConfig>>,
 	work: WorkEnvironments,
+	locks: Readonly<Record<string, SessionLock>>,
 ) => Placement {
 	let last:
 		| { config: OwnerConfig; leases: readonly Lease[]; envs: object; work: string; placement: Placement }
 		| undefined;
-	return (config, leases, envs, work) => {
-		const at = JSON.stringify(work);
+	return (config, leases, envs, work, locks) => {
+		const at = JSON.stringify([work, locks]);
 		if (last?.config !== config || last.leases !== leases || last.envs !== envs || last.work !== at)
-			last = { config, leases, envs, work: at, placement: place(config, leases, envs, work) };
+			last = { config, leases, envs, work: at, placement: place(config, leases, envs, work, locks) };
 		return last.placement;
 	};
 }
@@ -406,7 +414,10 @@ const view: Factory<typeof Mcp> = (_params, principal, self) => {
 	return { variant: "worker", members: workerView(principal, manager, self) };
 };
 
-/** A session worker's view: its session's servers (without the owner's errors), its locations and calls. */
+/**
+ * A session worker's view: its session's servers (without the owner's errors), which of them each of its leases uses,
+ * its locations and calls.
+ */
 function workerView(principal: WorkerPrincipal, manager: Ref<typeof McpManager>, self: Self) {
 	const { session, generation } = principal;
 	const current = currentWorker(self.get(Hosts, {}), principal);
@@ -423,6 +434,11 @@ function workerView(principal: WorkerPrincipal, manager: Ref<typeof McpManager>,
 			const used = new Set(leases.filter((lease) => lease.session === session).flatMap((lease) => lease.instances));
 			return instances.filter((instance) => used.has(instance.id)).map(({ error: _error, ...instance }) => instance);
 		}),
+		leases: deriveTyped(self, [manager.leases], ([leases]) =>
+			leases
+				.filter((lease) => lease.session === session)
+				.map(({ location, instances }) => ({ location, instances })),
+		),
 		errors: deriveTyped(self, [manager.leases], ([leases]) =>
 			leases.filter((lease) => lease.session === session).flatMap((lease) => lease.errors),
 		),

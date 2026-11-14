@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { McpStdioServerConfig } from "@earendil-works/pi-mcp";
-import { type Location, locationText } from "@p2/app/v1";
+import { type Location, locationText, type SessionLock } from "@p2/app/v1";
 import type { EnvConfig } from "../envs/config.ts";
 import { connectionRevision } from "../envs/connection-revision.ts";
 import type { OwnerConfig, OwnerServer } from "./config.ts";
@@ -68,6 +68,8 @@ export type InstanceSpec = {
 	readonly connect: Connect;
 	/** Per-request timeout from the configuration, in milliseconds. */
 	readonly timeoutMs: number | undefined;
+	/** The configuration's `description`, trimmed (undefined: none). */
+	readonly description: string | undefined;
 };
 
 /** One lease placed: the instance of each server it uses, by server name, and why entries of its project were refused. */
@@ -94,13 +96,15 @@ export type WorkEnvironments = Readonly<Record<string, readonly (string | null)[
 /**
  * The instances `config`'s servers and the leases' projects need, on the environments of `envs`. A lease at a location
  * on an environment its session does not work on (`work`) gets no servers: a worker can only lease where its
- * conversations can already run commands.
+ * conversations can already run commands. A locked session's lease (`locks`) gets only the servers its owner picked,
+ * and its project's servers only when picked too.
  */
 export function place(
 	config: OwnerConfig,
 	leases: readonly Lease[],
 	envs: Readonly<Record<string, EnvConfig>>,
 	work: WorkEnvironments,
+	locks: Readonly<Record<string, SessionLock>> = {},
 ): Placement {
 	const instances = new Map<string, InstanceSpec>();
 	const kept = new Set<string>();
@@ -120,9 +124,11 @@ export function place(
 			instances.set(spec.id, spec);
 			servers.set(spec.server, spec.id);
 		};
+		const lock = Object.hasOwn(locks, lease.session) ? locks[lease.session] : undefined;
 		for (const server of config.servers)
-			if (project.enabled.get(server.name) ?? server.enabled) use(ownerSpec(server, lease, envs));
-		for (const server of project.servers) use(projectSpec(server, lease, envs));
+			if ((project.enabled.get(server.name) ?? server.enabled) && (!lock || lock.mcp.includes(server.name)))
+				use(ownerSpec(server, lease, envs));
+		if (!lock || lock.projectMcp) for (const server of project.servers) use(projectSpec(server, lease, envs));
 		return { lease, servers, errors: project.errors.map((error) => `${where}: ${error}`) };
 	});
 	return { instances, leases: placed, kept };
@@ -160,6 +166,7 @@ function ownerSpec(
 			runsOn: "host",
 			connect: { kind: "http", url, headers, oauth: oauthServerOf(server) },
 			timeoutMs,
+			description: descriptionOf(server.config),
 		};
 	}
 	const at = owned?.location ?? null;
@@ -212,9 +219,10 @@ function stdioSpec(
 	const machine = runsOn === "host" ? null : runsOn.env;
 	const base = location !== null && location.env === machine ? location.cwd : null;
 	const hostVariables = source === "owner";
+	const description = descriptionOf(config);
 	if (runsOn === "host") {
 		const key = ["stdio", source, server, owner, runsOn, hash];
-		const spec = { id: idOf(key), server, source, location, runsOn, timeoutMs };
+		const spec = { id: idOf(key), server, source, location, runsOn, timeoutMs, description };
 		return {
 			...spec,
 			connect: {
@@ -232,7 +240,7 @@ function stdioSpec(
 	// An edited environment (or a sandbox's edited host) is another connection: its instances start again on it.
 	const revision = envConfig === undefined ? null : connectionRevision(envs, envConfig);
 	const key = ["stdio", source, server, owner, runsOn, revision, hash];
-	const spec = { id: idOf(key), server, source, location, runsOn, timeoutMs };
+	const spec = { id: idOf(key), server, source, location, runsOn, timeoutMs, description };
 	if (envConfig === undefined || revision === null)
 		return { ...spec, connect: { kind: "unplaced", reason: `environment "${runsOn.env}" is not in envs.json` } };
 	return {
@@ -250,6 +258,11 @@ function stdioSpec(
 			hostVariables,
 		},
 	};
+}
+
+/** A server configuration's `description`, trimmed; undefined when it has none. */
+function descriptionOf(config: { readonly description?: string }): string | undefined {
+	return config.description?.trim() || undefined;
 }
 
 /** `~` and `~/…` name the home directory, as in a shell (and in pi). */
