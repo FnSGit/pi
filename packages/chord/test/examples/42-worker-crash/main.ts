@@ -22,7 +22,7 @@ const plugins = createPlugins(
 	context,
 );
 const server = createHost({ address: hostKind("server")(), principal: { kind: "server" }, onError: () => {} });
-const workers = await createWorkers(
+const workers = createWorkers(
 	server,
 	Session,
 	{
@@ -33,6 +33,8 @@ const workers = await createWorkers(
 		principal: (address) => ({ kind: "worker", session: address.params.id }),
 		start: () => ({}),
 		lock: (address) => `example-42:${process.pid}:${address.key}`,
+		// The server host has no store.
+		store: undefined,
 		plugins,
 		onError: (error) => console.log(`   reported: ${error.kind}`),
 	},

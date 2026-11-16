@@ -90,12 +90,13 @@ pieces of base code and starts the server.
 
 ## The principals
 
-A **principal** says who is calling. The app defines the type; the kit needs a variant for the server, one for its
-workers, and adds the owner, `{ kind: "owner" }`, which the app's type must include:
+A **principal** says who is calling. The app defines the type; the kit needs a principal for the server, one for each of
+its workers (an app without worker kinds leaves it out) and one for the owner, whom the owner's sign-in names. The todo
+app gives the owner a variant of its own, `{ kind: "owner" }`; another app could make the owner one of its users:
 
 <!-- quote: src/principals.ts -->
 ```ts
-// The todo app's principals: its server and list workers, the kit's owner, and the users who signed in with a name.
+// The todo app's principals: its server and list workers, its owner, and the users who signed in with a name.
 
 /** Who someone is in the todo app. */
 export type TodoPrincipal =
@@ -230,7 +231,11 @@ export function startTodo(
 			listen: { host: "127.0.0.1", port: 0 },
 			api: API,
 			kinds: KINDS,
-			principal: { server: { kind: "server" }, worker: (address) => ({ kind: "worker", list: address.key }) },
+			principal: {
+				server: { kind: "server" },
+				worker: (address) => ({ kind: "worker", list: address.key }),
+				owner: { kind: "owner" },
+			},
 			// The store the server writes: its own spans and metrics, and what the workers and recording pages send.
 			telemetry: telemetry.store,
 			// Who a span was for: a short key and a user's name (each worker's `startWorker` gets the same hook).
@@ -299,21 +304,22 @@ console.log("   GET / signed in:", (await fetch(url, { headers: { cookie } })).s
 <!-- output: main -->
 ```text
 1. owner link: http://127.0.0.1:<port>/_chord/owner#<token>
-   data directory: logs, owner-token, plugins, server, telemetry.sqlite, telemetry.sqlite-shm, telemetry.sqlite-wal, workers
+   data directory: cache, logs, owner-token, plugins, server, telemetry.sqlite, telemetry.sqlite-shm, telemetry.sqlite-wal, workers
    GET / signed out: 401
-   the owner signs in: 200 chord-session=…
+   the owner signs in: 200 chord-sign-in=…
    GET / signed in: 200
 ```
 
 `startServer` made the data directory: `server/` (its store, the cookie secret, its files), `workers/` (one directory
-per worker), `plugins/` (the user's plugin root, beside the app's built-in one), `logs/` and `owner-token`;
+per worker), `plugins/` (the user's plugin root, beside the app's built-in one), `cache/` (each worker kind's base, written
+again at every start, and Node's compile cache for the workers), `logs/` and `owner-token`;
 `telemetry.sqlite` (with SQLite's `-shm` and `-wal` files) is the app's own, opened before the server starts
 (chapter XI). The page
 answered 401: HTTP **denies by default**, before any plugin code runs, unless a route says `public: true`.
 
 The **owner link** (`/_chord/owner#<token>`) is how the owner gets in: a single-use token, valid ten minutes, made at
 each start. It sits in the URL's fragment, which browsers never send, so it never reaches a log; the link's page posts
-it and receives a session cookie. A command-line client on the same machine reads `owner-token` instead (mode 0600,
+it and receives a sign-in cookie. A command-line client on the same machine reads `owner-token` instead (mode 0600,
 chapter III). Nothing is the owner because it comes from loopback: any local process could.
 
 # A List on Its Own Worker {#worker lede="A host kind, a remote contract, a worker facet with a table and a live query, and the principal that adds a todo."}
@@ -654,8 +660,8 @@ approves the code in a signed-in browser, and the client's next poll returns its
 
 # A Page {#page lede="A web entry, a web facet with React, the panels registry, and why a watch starts at the current value."}
 
-A page is a client host in the browser. The kit builds its **base bundle** from the app's web entry at start (Chord,
-React, the app's web modules), serves the plugins' web facets as small scripts beside it, and serves the page through
+A page is a client host in the browser. The kit builds its **base bundle** from the app's web entry right after the
+server listens (Chord, React, the app's web modules; the page's first request waits for it), serves the plugins' web facets as small scripts beside it, and serves the page through
 the app's template (design §23, "Web and TUI").
 
 ## The page's registry
@@ -827,7 +833,7 @@ await watch.stop();
 ```text
 4. the page loads:
    /_chord/web/base.<hash>.css
-   /_chord/web/plugin/@todo~lists.<hash>.css
+   /_chord/web/plugin/@todo~lists.<hash>.<hash>.css
    /_chord/web/plugins.<hash>.js
    /_chord/web/base.<hash>.js
    watch.value: 1 done
@@ -1628,20 +1634,21 @@ a span of another trace; the renderer prints it and never follows it.
 
 ## Trap: a trace starts where a span starts
 
-The panel took its reference to `Todos` before the click (`useHold`), under `BACKGROUND_CONTEXT`, and that hold is in no
-trace of the page: **a context without a recording span records nothing.** A host gives such work no span of its own,
-so its calls start no `chord.call` and send no carrier, and the provider's `chord.method` becomes a root of its own trace
-(the server's relay of the page's hold is one: `chord.relay` with `member="hold"`). So were the server's calls in step 2:
-on the worker each is a root `chord.method`. Start a span where the work begins, a click handler or a job
-(`host.root(fn, context, { trace })`), and pass its `ctx` down. The kit's HTTP component does this for every request: a
-`chord.http` span (method, route pattern, status), with the route's `ctx` under it. Step 11 adds honey from the command
-line, as step 3 did; the request is the trace's root, the server's call to the worker under it:
+The panel took its reference to `Todos` before the click (`useHold`), under `BACKGROUND_CONTEXT`, and that reference is
+in no trace of the page: **a context without a recording span records nothing.** Its hold is shared work (the page's
+other references to the same list use it too), a `chord.hold` root of its own, linked to the getter's span when there is
+one; but calls made under such a context start no `chord.call` and send no carrier, and the provider's `chord.method`
+becomes a root of its own trace (the server's relay of the page's hold is one: `chord.relay` with `member="hold"`). So
+were the server's calls in step 2: on the worker each is a root `chord.method`. Start a span where the work begins, a
+click handler or a job (`host.root(fn, context, { trace })`), and pass its `ctx` down. The kit's HTTP component does
+this for every request: a `chord.http` span (method, route pattern, status), with the route's `ctx` under it. Step 11
+adds honey from the command line, as step 3 did; the request is the trace's root, the server's call to the worker under
+it (its hold of the list is shared work: a root of its own, linked to the request):
 
 <!-- output: main -->
 ```text
 11. adding honey from the command line:
    chord.http chord.host="server" method="POST" route="POST /api/lists/:list" status=200
-     chord.hold chord.host="server" type="todo.todos" object="todo.todos(groceries)" address.kind="list" outcome="bound"
      chord.call chord.host="server" type="todo.todos" member="add" object="todo.todos(groceries)" address.kind="list" chord.principal="owner" outcome="ok"
        chord.method chord.host="list|groceries" type="todo.todos" member="add" object="todo.todos(groceries)" principal.kind="owner" chord.principal="owner" outcome="ok"
          chord.method chord.host="list|groceries" type="todo.store" member="add" object="todo.store" principal.kind="worker" chord.principal="worker:list|groceries" outcome="ok"

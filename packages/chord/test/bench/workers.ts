@@ -74,7 +74,7 @@ console.log(
 
 // Memory per idle worker on the server: its records, process handle, link and remote references.
 const server = createHost({ address: hostKind("server")(), principal: { kind: "server" }, onError: () => {} });
-const workers = await createWorkers(
+const workers = createWorkers(
 	server,
 	Session,
 	{
@@ -85,6 +85,8 @@ const workers = await createWorkers(
 		principal: () => ({ kind: "worker" }),
 		start: () => ({}),
 		lock: (address) => `bench:${process.pid}:${address.key}`,
+		// The server host has no store.
+		store: undefined,
 		plugins,
 		onOutput: () => {},
 		onError: () => {},

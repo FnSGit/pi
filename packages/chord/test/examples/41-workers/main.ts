@@ -22,7 +22,7 @@ const plugins = createPlugins(
 
 // 1. The server, and its workers: one forked process per session, stopped after 300 ms without use.
 const server = createHost({ address: hostKind("server")(), principal: { kind: "server" }, onError: console.error });
-const workers = await createWorkers(
+const workers = createWorkers(
 	server,
 	Session,
 	{
@@ -34,6 +34,8 @@ const workers = await createWorkers(
 		start: () => ({}),
 		lock: (address) => `example-41:${process.pid}:${address.key}`,
 		idleMs: () => 300,
+		// The server host has no store.
+		store: undefined,
 		plugins,
 		onError: console.error,
 	},

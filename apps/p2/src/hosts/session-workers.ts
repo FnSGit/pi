@@ -3,10 +3,10 @@
 // data), logs and owner notices, restarts after a crash (as v1), and the lifecycle steps of relocation and cloning,
 // serialized per session.
 import { realpathSync } from "node:fs";
-import type { FollowAttachment, FollowObserver } from "@earendil-works/chord";
+import type { FollowAttachment, FollowObserver, Store } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { JsonValue } from "@earendil-works/chord/json";
-import type { Plugins } from "@earendil-works/chord/plugins";
+import type { BaseInputs, Plugins } from "@earendil-works/chord/plugins";
 import { createWorkers, type WorkerState, type Workers, type WorkersError } from "@earendil-works/chord/workers";
 import { type Host, Session } from "../runtime/chord.ts";
 import { logWriter, processLogs } from "../runtime/logs.ts";
@@ -22,10 +22,14 @@ import type { WorkerInit } from "../runtime/worker.ts";
 
 export type SessionWorkersOptions = {
 	readonly host: Host;
+	/** The server host's store: a worker's exit is published after the commits its calls queued there. */
+	readonly store: Store;
 	readonly plugins: Plugins;
 	readonly app: string;
 	readonly dataDir: string;
 	readonly fake: boolean;
+	/** Whether workers record and send telemetry (`WorkerInit.telemetry`; settings.json's `telemetry`). */
+	readonly telemetry: boolean;
 	readonly entry: string;
 	readonly execArgv: readonly string[];
 	readonly env?: Readonly<Record<string, string>>;
@@ -46,6 +50,7 @@ const CRASH_WINDOW_MS = 60_000;
 export class SessionWorkers implements SessionWorkerControl {
 	/** Chord's workers component, made by `create` (its worker base bundled first). */
 	#workers: Workers<typeof Session> | undefined;
+	#baseInputs: BaseInputs | undefined;
 	readonly #options: SessionWorkersOptions;
 	readonly #generations = new Map<string, number>();
 	readonly #operations = new Map<string, Promise<unknown>>();
@@ -73,14 +78,27 @@ export class SessionWorkers implements SessionWorkerControl {
 	}
 
 	/**
-	 * The session workers: Chord's workers component created (it bundles the worker entry once, so every worker runs the
-	 * code the server booted with; a broken entry rejects), then followed.
+	 * The session workers: Chord's workers component created and its worker base built now (the worker entry bundled
+	 * once, so every worker runs the code the server booted with; a broken entry rejects), then followed.
 	 */
 	static async create(options: SessionWorkersOptions, context: Context): Promise<SessionWorkers> {
 		const made = new SessionWorkers(options);
-		made.#workers = await made.#createWorkers(context);
+		const workers = made.#createWorkers(context);
+		made.#workers = workers;
+		const built = await workers.build();
+		if (built.kind === "failed") {
+			await workers.close(context);
+			throw built.error;
+		}
+		made.#baseInputs = built.inputs;
 		await made.#follow();
 		return made;
+	}
+
+	/** The files the worker base was built from, with their bytes' hashes. */
+	get baseInputs(): BaseInputs {
+		// Set by `create` before the instance is handed out.
+		return this.#baseInputs!;
 	}
 
 	/** Chord's workers component for the sessions. */
@@ -89,7 +107,7 @@ export class SessionWorkers implements SessionWorkerControl {
 		return this.#workers!;
 	}
 
-	#createWorkers(context: Context): Promise<Workers<typeof Session>> {
+	#createWorkers(context: Context): Workers<typeof Session> {
 		const options = this.#options;
 		const dataDir = realpathSync(options.dataDir);
 		return createWorkers(
@@ -98,6 +116,7 @@ export class SessionWorkers implements SessionWorkerControl {
 			{
 				kind: "worker",
 				entry: options.entry,
+				store: options.store,
 				execArgv: options.execArgv,
 				...(options.env === undefined ? {} : { env: options.env }),
 				// Owners reach every session, the server's own code too (`SERVER`); guests only the sessions their grant names.
@@ -118,6 +137,7 @@ export class SessionWorkers implements SessionWorkerControl {
 						app: options.app,
 						dataDir: options.dataDir,
 						fake: options.fake,
+						telemetry: options.telemetry,
 						generation,
 						values,
 					};

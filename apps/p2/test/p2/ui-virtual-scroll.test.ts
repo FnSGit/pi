@@ -119,6 +119,7 @@ describe("virtual transcript", { skip: !browserTests }, () => {
 			BACKGROUND_CONTEXT,
 		);
 		browser = await Browser.start();
+		await browser.signIn(fixture.owner);
 		await browser.call("Page.addScriptToEvaluateOnNewDocument", {
 			// Page errors by phase, including the browser's "ResizeObserver loop" reports.
 			source: `window.__errors = []; addEventListener('error', (e) => window.__errors.push((window.__phase ?? 'load') + ': ' + String(e.message) + ' ' + (e.error?.stack ?? ''))); addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason?.stack ?? e.reason)));`,
@@ -127,6 +128,21 @@ describe("virtual transcript", { skip: !browserTests }, () => {
 	after(async () => {
 		await browser?.close();
 		await fixture?.close();
+	});
+
+	it("loads the transcript's images from the server, not from the view", async () => {
+		await browser.metrics(1200, 900);
+		await browser.open(`http://127.0.0.1:${fixture.server.port}/s/${session}`);
+		await browser.wait(`document.querySelector('.messages')?.textContent.includes('Fixed module')`);
+		await browser.wait(`document.querySelectorAll('.images img').length > 0`);
+		await browser.wait(`[...document.querySelectorAll('.images img')].every((img) => img.complete)`);
+		const images = await browser.evaluate<{ src: string; width: number }[]>(
+			`[...document.querySelectorAll('.images img')].map((img) => ({ src: img.getAttribute('src'), width: img.naturalWidth }))`,
+		);
+		for (const image of images) {
+			assert.match(image.src, /^\/entry-image\?session=/);
+			assert.ok(image.width > 0, `${image.src} loaded`);
+		}
 	});
 
 	it("keeps a fast wheel scroll going into each older page until the conversation's start", async () => {
@@ -316,6 +332,7 @@ describe("virtual transcript feedback", { skip: !browserTests }, () => {
 		// that distance of a row, each render would flip it: the list must settle instead of rendering every frame.
 		const fixture = await startFixture({ web: true });
 		const browser = await Browser.start();
+		await browser.signIn(fixture.owner);
 		try {
 			await browser.metrics(390, 844);
 			await browser.open(`http://127.0.0.1:${fixture.server.port}`);
