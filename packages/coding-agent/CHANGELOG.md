@@ -9,21 +9,12 @@
 ### Added
 
 - Added `deepseek-v4.1-flash` and `deepseek-v4.1-flash-1017` to the Qwen Token Plan Individual providers, and per-plan key variables `QWEN_TOKEN_PLAN_TEAM_API_KEY`, `QWEN_TOKEN_PLAN_TEAM_CN_API_KEY`, `QWEN_TOKEN_PLAN_INDIVIDUAL_API_KEY`, and `QWEN_TOKEN_PLAN_INDIVIDUAL_CN_API_KEY`; the shared `QWEN_TOKEN_PLAN_API_KEY` and `QWEN_TOKEN_PLAN_CN_API_KEY` still work ([#11773](https://github.com/earendil-works/pi/issues/11773))
-- The footer now shows the current session id on its own line, so a session can be located for troubleshooting without running `/session`
-- The footer renders each extension status on its own line, so a long status such as a git-status path and branch does not push the token stats off the row
-- The `hideFooterPwd` setting drops the footer's pwd (cwd and git branch) line, for extensions that already render that row via `ctx.ui.setStatus()`
-- `skill://<name>` URIs in the read tool: `skill://pdf-tools` reads a skill's `SKILL.md` and `skill://pdf-tools/references/formats.md` reads a file bundled with the skill, so the model no longer needs the absolute path.
-- Embedded `/skill:<name>` tokens: a skill command anywhere in a message expands in place, with the surrounding text becoming the arguments.
 
 ### Changed
 
 - Qwen Token Plan providers now use the current gateways (`token-plan.maas.qwencloudapi.com` international, `token-plan.maas.qianwenaiapi.com` China), and `qwen-token-plan` and `qwen-token-plan-cn` are named "Qwen Token Plan Team" and "Qwen Token Plan Team CN". Provider IDs are unchanged, and the old `aliyuncs.com` hosts still work ([#11773](https://github.com/earendil-works/pi/issues/11773))
 - Updated `undici` to 8.12.4 for security advisories GHSA-mqg3-3v4r-cm32, GHSA-7xg3-fphp-28hg, GHSA-5rm8-gv32-r954, GHSA-9v6h-8rgp-m69f, GHSA-3g9m-rv3r-w5w2, and GHSA-r4pc-4jcp-7pqc ([#12200](https://github.com/earendil-works/pi/issues/12200))
 - The find tool's path patterns are now relative to the search directory, like grep's `glob`: `src/*.ts` finds `src/a.ts` but no longer `pkg/src/a.ts`; use `**/src/*.ts` to match at any depth. Patterns without `/` still match file names at any depth ([#12066](https://github.com/earendil-works/pi/issues/12066))
-- The system prompt now tells the model to load a skill's file with the read tool via its `skill://<name>` URI before acting, and not to claim to follow a skill whose file it has not loaded.
-- Skill descriptions in the system prompt are truncated to a bounded preview that cuts at a sentence or word boundary.
-- Same-name skill collisions keep the later skill under a `<label>/<name>` alias (for example `project/foo`) instead of dropping it, so no skill silently disappears.
-- An unknown `/skill:<name>` now returns an error listing the available skills instead of passing the text through verbatim.
 
 ### Fixed
 
