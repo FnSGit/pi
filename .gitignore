@@ -46,3 +46,8 @@ plans/
 .pi/settings.json
 collect.sh
 packages/agent/docs/extensions/pi-server-artifact/index.md
+
+# 本机生成/临时文件
+.codegraph/
+.pi-link
+pr_*.json
