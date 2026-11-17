@@ -1,62 +1,8 @@
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
-import type { ModelsDevReasoningOption, ModelsDevV2Model } from "../catalog/sources/models-dev.ts";
+import { describe, expect, it } from "vitest";
 import { streamSimple } from "../src/api/anthropic-messages.ts";
 import { getSupportedThinkingLevels, hasApi } from "../src/models.ts";
-import type { Api, Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
-import { writeUpstreamMock } from "./catalog-generation-utils.ts";
-
-const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const temporaryRoots: string[] = [];
-
-afterEach(() => {
-	for (const root of temporaryRoots.splice(0)) rmSync(root, { force: true, recursive: true });
-});
-
-function generateFireworksModels(
-	options: Record<string, ModelsDevReasoningOption[] | undefined>,
-): Record<string, Model<Api>> {
-	const root = mkdtempSync(join(tmpdir(), "pi-fireworks-generation-"));
-	temporaryRoots.push(root);
-	const preloadPath = join(root, "mock-catalog.mjs");
-	const outputPath = join(root, "catalog");
-	const models = Object.entries(options).map(([id, reasoningOptions]): ModelsDevV2Model => {
-		const effort = reasoningOptions?.find((option) => option.type === "effort");
-		const budget = reasoningOptions?.find((option) => option.type === "budget_tokens");
-		return {
-			id: `accounts/fireworks/models/${id}`,
-			type: "chat",
-			name: id,
-			modalities: { input: ["text"], output: ["text"] },
-			capabilities: {
-				tools: { supported: true },
-				reasoning: {
-					supported: true,
-					...(reasoningOptions?.some((option) => option.type === "toggle") ? { toggle: true } : {}),
-					...(effort ? { effort: effort.values } : {}),
-					...(budget ? { budget: { min: budget.min, max: budget.max } } : {}),
-				},
-			},
-			api: {},
-		};
-	});
-	writeUpstreamMock(preloadPath, {
-		"fireworks-ai": { models: Object.fromEntries(models.map((model) => [model.id, model])) },
-	});
-	const result = spawnSync(
-		process.execPath,
-		["--import", pathToFileURL(preloadPath).href, "catalog/generate.ts", "--json-only", "--json-output", outputPath],
-		{ cwd: packageRoot, encoding: "utf8", timeout: 10_000 },
-	);
-	expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-	expect(result.stderr).toBe("");
-	return JSON.parse(readFileSync(join(outputPath, "providers/fireworks.json"), "utf8")) as Record<string, Model<Api>>;
-}
+import { generateFireworksModels } from "./catalog-generation-utils.ts";
 
 describe("Fireworks model generation", () => {
 	// Regression for #9323: import catalog efforts and correct only the known omissions.

@@ -164,6 +164,24 @@ Add these bindings to Zed's `keymap.json`:
 }
 ```
 
+### Paste images with Ctrl+V
+
+Zed binds `ctrl-v` to `terminal::Paste` in the Terminal context, which only pastes clipboard
+text. Pasting a screenshot therefore does nothing unless Pi's image paste key reaches the
+terminal. On Windows and WSL that key is `alt+v`; elsewhere it is `ctrl+v`. See
+[Keybindings](keybindings.md) for the complete list.
+
+To keep using `ctrl-v`, forward Pi's key sequence instead of Zed's paste:
+
+```json
+{
+  "context": "Terminal",
+  "bindings": {
+    "ctrl-v": ["terminal::SendText", "\u001bv"]
+  }
+}
+```
+
 ## Windows Terminal
 
 Windows Terminal uses Pi's Windows and WSL shortcut defaults. See [Keybindings](keybindings.md) for the complete list.
