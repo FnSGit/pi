@@ -46,3 +46,8 @@ plans/
 .pi/settings.json
 collect.sh
 packages/agent/docs/extensions/pi-server-artifact/index.md
+
+# 本地工具产物
+.codegraph/
+.pi-link
+.pi/skills/pi-upgrade/
