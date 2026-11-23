@@ -112,6 +112,19 @@ pi -p "Say exactly: ok"   # 返回 ok —— 证明真实推理链路可用
 `tsc`），脚本的 node_modules 检查已改为 `tsc`。若构建中出现该报错，先确认 node_modules 是否
 被并发的其他 session 破坏（详见下节）。
 
+### 依赖版本漂移伪装成类型错误
+症状：`packages/ai` 构建报 `Property 'input_transformations' does not exist on type 'Response'`
+之类的类型错误（2026-11-23 实例）。
+
+原因：上游合并升级了依赖（该例 `openai` 7.19.0 → 7.59.0，随 `03de604b8` 引入），
+`package-lock.json` 随之更新，但 `node_modules` 还是旧的 —— 新代码用到新 SDK 的类型，
+旧类型里没有，于是报「源码类型错误」。脚本原先的 `node_modules_ready()` 只查 tsc/marked/空目录，
+检测不到版本漂移，会误跳过 `npm ci`。现已加第 4 项检查：
+`node_modules/.package-lock.json` 必须比 `package-lock.json` 新。
+
+处理：执行一次 `npm ci --ignore-scripts --no-audit --no-fund`（环境变量见「npm ci 报 FETCH_ERROR」
+与「npm 静默挂起」两节），再重跑脚本。
+
 ### node_modules 损坏伪装成类型错误
 症状：构建阶段报 `Cannot find module 'marked-cjk-friendly'` 等模块缺失；或 `tsc` 报
 `Cannot find module 'marked'`、`Property 'raw' does not exist on type 'LatexToken'` 等。

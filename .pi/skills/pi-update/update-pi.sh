@@ -73,10 +73,13 @@ function get_pi_version() {
 #   2. marked 已解压 —— 被中断的安装会留下空包目录，导致 tsgo 报
 #      "Cannot find module 'marked'" 等误导性类型错误
 #   3. 无空目录残留 —— 空包目录是安装被中断的直接信号
+#   4. 依赖树与 lockfile 同步 —— 上游合并常升级依赖（如 openai 7.19→7.59），lock 更新而
+#      node_modules 未重装，会带旧依赖进构建并报误导性类型错误（见「依赖版本漂移」一节）
 function node_modules_ready() {
 	node_modules/.bin/tsc --version >/dev/null 2>&1 || return 1
 	[ -f node_modules/marked/package.json ] || return 1
 	[ -z "$(find node_modules -maxdepth 2 -type d -empty -print -quit 2>/dev/null)" ] || return 1
+	[ node_modules/.package-lock.json -nt package-lock.json ] || return 1
 	return 0
 }
 
